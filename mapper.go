@@ -20,11 +20,19 @@ type mapperKey struct {
 	_ uint8
 }
 
+// G is the global mapper... for users who don't care about lock contention.
+// For those that do, it is recommended to use NewMapper to get a unique
+// mapper.
+var G Mapper
+
 // NewMapper creates a new Mapper.
 func NewMapper() *Mapper { return &Mapper{} }
 
-// New creates a new pointer to pass to C via Cgo, that can be later used
-// with Get to obtain the Go value v, typically from a C to Go callback func.
+// New creates a new mapping to the Go value v.
+//
+// The mapping is a pointer that can be passed to C via Cgo.  When Cgo
+// calls back into Go, supplying the pointer, the client code can use
+// Mapper.Get to retrieve the Go object, after type conversion.
 func (mapper *Mapper) New(v interface{}) unsafe.Pointer {
 	// Create a new unique token by using the pointer value.
 	//
@@ -49,7 +57,7 @@ func (mapper *Mapper) Get(k unsafe.Pointer) (v interface{}) {
 	return
 }
 
-// Delete the Cgo pointer k.
+// Delete mapping via the Cgo pointer k.
 func (mapper *Mapper) Delete(k unsafe.Pointer) {
 	mapper.m.Delete(k)
 }
