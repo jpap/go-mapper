@@ -21,12 +21,8 @@ type mapperKey struct {
 }
 
 // G is the global mapper... for users who don't care about lock contention.
-// For those that do, it is recommended to use NewMapper to get a unique
-// mapper.
+// For those that do, it is recommended to use a separate Mapper instance.
 var G Mapper
-
-// NewMapper creates a new Mapper.
-func NewMapper() *Mapper { return &Mapper{} }
 
 // New creates a new mapping to the Go value v.
 //
@@ -52,7 +48,7 @@ func (mapper *Mapper) Get(k unsafe.Pointer) (v interface{}) {
 	var ok bool
 	v, ok = mapper.m.Load((*mapperKey)(k))
 	if !ok {
-		panic(fmt.Errorf("invalid cgo ptr: %p", k))
+		panic(fmt.Errorf("mapper: ptr not mapped: %p", k))
 	}
 	return
 }
