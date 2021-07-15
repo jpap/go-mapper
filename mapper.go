@@ -15,6 +15,10 @@ import (
 type Mapper struct {
 	mux sync.RWMutex
 	m   map[Key]interface{}
+
+	// atromicKey is a sizeof(pointer)/2 value (lower bit is reserved) that is
+	// incremented for each new Key "allocation".
+	atomicKey uintptr
 }
 
 // Key is an opaque token used to map onto Go values.
@@ -79,10 +83,6 @@ func (mapper *Mapper) MapValue(goValue interface{}) Key {
 	return key
 }
 
-// atromicKey is a sizeof(pointer)/2 value (lower bit is reserved) that is
-// incremented for each new Key "allocation".
-var atomicKey uintptr
-
 // Get retrieves the Go value from key.
 func (mapper *Mapper) Get(key Key) (goValue interface{}) {
 	mapper.mux.RLock()
@@ -104,6 +104,14 @@ func (mapper *Mapper) GetPtr(ptr unsafe.Pointer) (goValue interface{}) {
 func (mapper *Mapper) Delete(key Key) {
 	mapper.mux.Lock()
 	delete(mapper.m, key)
+	mapper.mux.Unlock()
+}
+
+// Clear all mappings.
+func (mapper *Mapper) Clear() {
+	mapper.mux.Lock()
+	mapper.m = nil
+	mapper.atomicKey = 0
 	mapper.mux.Unlock()
 }
 
