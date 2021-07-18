@@ -1,6 +1,6 @@
 // Copyright 2021 John Papandriopoulos.
 // Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE.md file.
+// license that can be found in the LICENSE file.
 
 // Package testing allows us to use cgo in Go tests.
 package testing
