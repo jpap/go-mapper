@@ -43,7 +43,7 @@ func (k Key) Handle() unsafe.Pointer {
 // malloc.
 func KeyFromPtr(ptr unsafe.Pointer) Key {
 	if uintptr(ptr)&0x1 != 0 {
-		panic(fmt.Errorf("mapper: ptr is unaligned: 0x%x", ptr))
+		panic(fmt.Errorf("ptr is unaligned: 0x%x", ptr))
 	}
 	return Key{uintptr(ptr)} // we assume pointer <= 64-bits!
 }
@@ -77,7 +77,7 @@ func (mapper *Mapper) MapValue(goValue interface{}) Key {
 	key := Key{atomic.AddUintptr(&mapper.atomicKey, 2) | 0x1}
 	// Crash on wrap-around
 	if key.v == 0 {
-		panic("mapper: key space exhausted")
+		panic("key space exhausted")
 	}
 	mapper.doMap(key, goValue)
 	return key
@@ -88,7 +88,7 @@ func (mapper *Mapper) Get(key Key) (goValue interface{}) {
 	mapper.mux.RLock()
 	goValue, ok := mapper.m[key]
 	if !ok {
-		panic(fmt.Errorf("mapper: key not mapped: 0x%x", key))
+		panic(fmt.Errorf("key not mapped: 0x%x", key))
 	}
 	mapper.mux.RUnlock()
 	return
