@@ -26,6 +26,12 @@ type Key struct {
 	v uintptr
 }
 
+// We use the LSB on a cgo pointer to mark it as a synthetic "counting-pointer"
+// key type.  This means that real memory pointer values supplied by the package
+// user and obtained from cgo (e.g. from malloc) must be at least two bytes
+// aligned.
+const countingPointerBit = 1
+
 // Handle returns an opaque "pointer" value that can be used to pass to cgo.
 // The returned value is pointer-sized, but should never be de-referenced.
 func (k Key) Handle() unsafe.Pointer {
@@ -42,7 +48,7 @@ func (k Key) Handle() unsafe.Pointer {
 // must be zero, which is a reasonable assumption for pointers returned via
 // malloc.
 func KeyFromPtr(ptr unsafe.Pointer) Key {
-	if uintptr(ptr)&0x1 != 0 {
+	if uintptr(ptr)&countingPointerBit != 0 {
 		panic(fmt.Errorf("ptr is unaligned: 0x%x", ptr))
 	}
 	return Key{uintptr(ptr)} // we assume pointer <= 64-bits!
@@ -74,7 +80,7 @@ func (mapper *Mapper) MapPtrPair(ptr unsafe.Pointer, goValue interface{}) Key {
 // panic.  To avoid running out of space on a 32-bit platform (where
 // 2,147,483,648 mappings are possible), use MapPtrPair instead.
 func (mapper *Mapper) MapValue(goValue interface{}) Key {
-	key := Key{atomic.AddUintptr(&mapper.atomicKey, 2) | 0x1}
+	key := Key{atomic.AddUintptr(&mapper.atomicKey, 2) | countingPointerBit}
 	// Crash on wrap-around
 	if key.v == 0 {
 		panic("key space exhausted")
@@ -94,8 +100,9 @@ func (mapper *Mapper) Get(key Key) (goValue interface{}) {
 	return
 }
 
-// GetPtr calls Get after first converting ptr to a Key.
+// GetPtr calls Get after first converting cgo ptr to a Key.
 func (mapper *Mapper) GetPtr(ptr unsafe.Pointer) (goValue interface{}) {
+	// We don't use KeyFromPtr because the ptr may be a counting-pointer type.
 	key := Key{uintptr(ptr)}
 	return mapper.Get(key)
 }
@@ -105,6 +112,13 @@ func (mapper *Mapper) Delete(key Key) {
 	mapper.mux.Lock()
 	delete(mapper.m, key)
 	mapper.mux.Unlock()
+}
+
+// DeletePtr deletes an existing mapping from a cgo pointer.
+func (mapper *Mapper) DeletePtr(ptr unsafe.Pointer) {
+	// We don't use KeyFromPtr because the ptr may be a counting-pointer type.
+	key := Key{uintptr(ptr)}
+	mapper.Delete(key)
 }
 
 // Clear all mappings.
