@@ -16,7 +16,7 @@ type Mapper struct {
 	mux sync.RWMutex
 	m   map[Key]interface{}
 
-	// atromicKey is a sizeof(pointer)/2 value (lower bit is reserved) that is
+	// atomicKey is a sizeof(pointer)/2 value (lower bit is reserved) that is
 	// incremented for each new Key "allocation".
 	atomicKey uintptr
 }
