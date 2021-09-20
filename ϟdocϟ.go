@@ -20,6 +20,7 @@
 // Internally, the mapper uses a RWLock-protected Go map to associate `Keys`
 // with Go values.  The following patterns are supported.
 //
+//
 // Mapping a Go Object with an Existing Cgo Pointer
 //
 // You have a pointer already obtained from cgo, which is at least 2-bytes
@@ -28,6 +29,7 @@
 // That pointer can be mapped to a Go value using the `MapPtrPair` method.  The
 // returned `Key` can then be used to obtain the mapped Go value using the
 // `Get` method.
+//
 //
 // Mapping a Go Object without an Existing Cgo Pointer
 //
@@ -48,6 +50,7 @@
 // system by using multiple `Mapper`s, each for different categories of object
 // mappings, instead of the global map `G`.
 //
+//
 // Relation to Go 1.17 and Up
 //
 // Go 1.17 introduced a new Handle type that is similar to the functionality
@@ -58,6 +61,5 @@
 //
 package mapper // go.jpap.org/mapper
 
-// To install: `go install go.jpap.org/godoc-readme-gen`
-//
 //go:generate godoc-readme-gen -f -title "Map Between Go Values and Cgo Pointers"
+//  To install: `go install go.jpap.org/godoc-readme-gen`
