@@ -13,9 +13,11 @@ typedef struct {
 	void *user;
 } object_t;
 
-static object_t *allocObject(void *user) {
+// Note the use of uintptr_t here!  If using an external API, you would need to
+// write a wrapper; see (Key).handle for details.
+static object_t *allocObject(uintptr_t objUserPtr) {
 	object_t *obj = (object_t *)malloc(sizeof(object_t));
-	obj->user = user;
+	obj->user = (void *)objUserPtr;
 	return obj;
 }
 
@@ -23,10 +25,13 @@ static void freeObject(object_t *obj) {
 	free(obj);
 }
 
-extern void goWorkCallback(object_t *obj, void *userWork);
+// Note the use of uintptr_t here!  If using an external API, you would need to
+// typecast the function pointer to this type.
+extern void goWorkCallback(object_t *obj, uintptr_t objUserPtr, uintptr_t workUserPtr);
 
-static void objDoWork(object_t *obj, void *userWork) {
-	goWorkCallback(obj, userWork);
+// Note the use of uintptr_t here!
+static void objDoWork(object_t *obj, uintptr_t callUserPtr) {
+	goWorkCallback(obj, (uintptr_t)obj->user, callUserPtr);
 }
 */
 import "C"
@@ -43,7 +48,7 @@ type GoObject struct {
 
 func RunTestMapCgoPointer(t *testing.T) {
 	// No user pointer here.
-	obj := C.allocObject(nil)
+	obj := C.allocObject(0)
 	if obj == nil {
 		panic("obj alloc failure")
 	}
@@ -54,13 +59,19 @@ func RunTestMapCgoPointer(t *testing.T) {
 		called = true
 	}}
 
-	// Map based on the C.object_t pointer
+	// Map based on the C.object_t pointer.
+	//
+	// Note that [obj] is a valid pointer into the process memory space, so the
+	// conversion to unsafe.Pointer is valid here.
 	key := mapper.G.MapPtrPair(unsafe.Pointer(obj), goObj)
+	defer mapper.G.Delete(key)
 
 	// Pass the key as the work-user pointer.
-	C.objDoWork(obj, key.Handle())
+	//
+	// Note that we have to pass the handle as C.uintptr_t, hence the typecast.
+	C.objDoWork(obj, C.uintptr_t(key.Handle()))
 	if !called {
-		t.Fatal("callback did not run")
+		t.Fatal("callback using cgo pointer did not run")
 	}
 }
 
@@ -72,30 +83,32 @@ func RunTestMapGoKey(t *testing.T) {
 
 	// Create a unique key
 	key := mapper.G.MapValue(goObj)
+	defer mapper.G.Delete(key)
 
 	// Key is the user pointer here
-	obj := C.allocObject(key.Handle())
+	obj := C.allocObject(C.uintptr_t(key.Handle()))
 	if obj == nil {
 		panic("obj alloc failure")
 	}
 	defer C.freeObject(obj)
 
-	C.objDoWork(obj, nil)
+	C.objDoWork(obj, 0)
 	if !called {
-		t.Fatal("callback did not run")
+		t.Fatal("callback using handle did not run")
 	}
 }
 
 //export goWorkCallback
-func goWorkCallback(obj *C.object_t, workUser unsafe.Pointer) {
-	// Get the user pointer; and if not set, the work-user pointer.
-	ptr := unsafe.Pointer(obj.user)
-	if ptr == nil {
-		ptr = workUser
+func goWorkCallback(obj *C.object_t, objUserPtr, _ uintptr) {
+	// Get the Go object from the object; if not set, use the work-user handle.
+	var goObj GoObject
+	if objUserPtr != 0 {
+		goObj = mapper.G.GetHandle(objUserPtr).(GoObject)
+	} else {
+		// Note that [obj] is a valid pointer into the process' memory space, so we
+		// can cast to unsafe.Pointer here.
+		goObj = mapper.G.GetPtr(unsafe.Pointer(obj)).(GoObject)
 	}
-
-	// Exchange the user pointer for the Go object.
-	goObj := mapper.G.GetPtr(ptr).(GoObject)
 
 	// Call the Go object's callback.
 	goObj.goCallback()

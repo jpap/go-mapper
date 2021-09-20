@@ -1,3 +1,5 @@
+<!-- DO NOT EDIT. -->
+<!-- Automatically generated with https://go.jpap.org/godoc-readme-gen -->
 
 # Map Between Go Values and Cgo Pointers [![GoDoc](https://pkg.go.dev/badge/go.jpap.org/mapper.svg)](https://pkg.go.dev/go.jpap.org/mapper)
 

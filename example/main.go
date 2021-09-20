@@ -5,9 +5,11 @@
 package main
 
 /*
+#include <stdint.h>
+
 extern void goCallback(void *user);
 
-static void invokeCfuncThatCallsGoCallback(void *user) {
+static void invokeCfuncThatCallsGoCallback(uintptr_t user) {
 	goCallback(user);
 }
 */
@@ -29,7 +31,7 @@ func main() {
 	key := mapper.G.MapValue(s)
 	defer mapper.G.Delete(key)
 
-	C.invokeCfuncThatCallsGoCallback(key.Handle())
+	C.invokeCfuncThatCallsGoCallback(C.uintptr_t(key.Handle()))
 }
 
 //export goCallback

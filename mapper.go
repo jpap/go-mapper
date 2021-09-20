@@ -32,47 +32,71 @@ type Key struct {
 // aligned.
 const countingPointerBit = 1
 
-// Handle returns an opaque "pointer" value that can be used to pass to cgo.
-// The returned value is pointer-sized, but should never be de-referenced.
-func (k Key) Handle() unsafe.Pointer {
-	return unsafe.Pointer(k.v)
+// Handle returns an opaque "pointer" value that be passed to a C function via
+// cgo.  The returned value is pointer-sized, but should never be used as a
+// pointer because it may NOT be a valid address in the process' address space.
+//
+// For the same reason, the return type here is NOT unsafe.Pointer because if
+// it were, Go's GC will panic if the actual pointer value is not a valid
+// address in the process' address space:
+//
+//   runtime: bad pointer in frame [func] at 0x[addr]: 0x[int value]
+//
+// When passing a returned handle to a cgo call, it must NOT be typecast to
+// unsafe.Pointer.  Doing so can result in a panic as described above.
+// Instead, the caller must pass the returned handle as a C.uintptr_t.  This
+// means that some C APIs that have void* arguments need to be "wrapped" in
+// order to perform the typecast from uintptr_t to void* in C -- unfortunately
+// the Go compiler does not allow us to do that conversion in Go without using
+// unsafe.Pointer which can panic in situations described above.
+//
+// The following issue on the Go repository tracks this topic:
+// https://github.com/golang/go/issues/22906
+func (k Key) Handle() uintptr {
+	return k.v
 }
 
-// KeyFromPtr converts a cgo pointer to a Key.
+// KeyFromPtr converts the given cgo pointer to a Key.
 //
-// The key can be any unique pointer, but it is recommended that it be a value
-// obtained from outside the view of the Go GC, in case the GC moves that memory
-// around.  Typically key is a malloc-based pointer obtained from cgo.
+// Strictly speaking, ptr can be any pointer, but a pointer to a Go object can
+// be moved (e.g. when the stack is resized), which can render the resulting
+// Key invalid, and lead to a panic.  We do not recommend any pointers to Go
+// objects being passed here.
 //
 // We require the key to be at least 2-bytes aligned: that is, the lower bit
-// must be zero, which is a reasonable assumption for pointers returned via
-// malloc.
+// must be zero, which is a reasonable assumption for pointers obtained by cgo
+// via malloc and friends.
 func KeyFromPtr(ptr unsafe.Pointer) Key {
 	if uintptr(ptr)&countingPointerBit != 0 {
 		panic(fmt.Errorf("ptr is unaligned: 0x%x", ptr))
 	}
-	return Key{uintptr(ptr)} // we assume pointer <= 64-bits!
+	return Key{uintptr(ptr)}
+}
+
+// KeyFromHandle converts a handle to a Key.
+func KeyFromHandle(handle uintptr) Key {
+	return Key{handle}
 }
 
 // G is the global mapper... for users who don't care about lock contention.
-// For those that do, it is recommended to use a separate Mapper instance.
+// For those that do, we recommend a separate Mapper instance.
 var G Mapper
 
-// MapPair creates a mapping between the provided Key and Go value.
+// MapPair creates a mapping between the provided Key and Go values.
 func (mapper *Mapper) MapPair(key Key, goValue interface{}) {
 	mapper.doMap(key, goValue)
 }
 
-// MapPtrPair is like MapPair, but maps from a cgo pointer, and returns the
-// associated Key.  This method is a convenience wrapper around KeyFromPtr and
-// MapPair.
+// MapPtrPair is like MapPair, but maps from the given cgo pointer, and returns
+// the associated Key.  This method is a convenience wrapper around KeyFromPtr
+// and MapPair.
 func (mapper *Mapper) MapPtrPair(ptr unsafe.Pointer, goValue interface{}) Key {
 	key := KeyFromPtr(ptr)
 	mapper.MapPair(key, goValue)
 	return key
 }
 
-// MapValue maps a new Key to the given Go value, and returns the Key.
+// MapValue maps and returns a new Key for the given Go value.
 //
 // The key here is a sizeof(pointer)/2 atomic, that is simply incremented by two
 // on each call.  On a 64-bit platform, this key-space is so large that is will
@@ -89,35 +113,47 @@ func (mapper *Mapper) MapValue(goValue interface{}) Key {
 	return key
 }
 
-// Get retrieves the Go value from key.
+// Get retrieves the Go value from the given key.
 func (mapper *Mapper) Get(key Key) (goValue interface{}) {
 	mapper.mux.RLock()
 	goValue, ok := mapper.m[key]
+	mapper.mux.RUnlock()
 	if !ok {
 		panic(fmt.Errorf("key not mapped: 0x%x", key))
 	}
-	mapper.mux.RUnlock()
 	return
 }
 
-// GetPtr calls Get after first converting cgo ptr to a Key.
+// GetPtr calls Get after first converting the given cgo pointer to a Key.
 func (mapper *Mapper) GetPtr(ptr unsafe.Pointer) (goValue interface{}) {
 	// We don't use KeyFromPtr because the ptr may be a counting-pointer type.
 	key := Key{uintptr(ptr)}
 	return mapper.Get(key)
 }
 
-// Delete an existing mapping via the key.
+// GetHandle calls Get after first converting the given handle to a Key.
+func (mapper *Mapper) GetHandle(handle uintptr) (goValue interface{}) {
+	key := KeyFromHandle(handle)
+	return mapper.Get(key)
+}
+
+// Delete an existing mapping via the given key.
 func (mapper *Mapper) Delete(key Key) {
 	mapper.mux.Lock()
 	delete(mapper.m, key)
 	mapper.mux.Unlock()
 }
 
-// DeletePtr deletes an existing mapping from a cgo pointer.
+// DeletePtr deletes an existing mapping from the given cgo pointer.
 func (mapper *Mapper) DeletePtr(ptr unsafe.Pointer) {
+	key := KeyFromPtr(ptr)
+	mapper.Delete(key)
+}
+
+// DeletePtr deletes an existing mapping from the given handle.
+func (mapper *Mapper) DeleteHandle(handle uintptr) {
 	// We don't use KeyFromPtr because the ptr may be a counting-pointer type.
-	key := Key{uintptr(ptr)}
+	key := Key{handle}
 	mapper.Delete(key)
 }
 
